@@ -95,6 +95,8 @@ function createAnt(options = {}) {
     anchorOffset: 0,
     color: colors.body,
     legColor: colors.legs,
+    legPhase: randomBetween(0, Math.PI * 2),
+    distanceTraveled: 0,
   };
 
   nextAntId += 1;
@@ -447,8 +449,10 @@ function updateAnt(ant, deltaTime, elapsedTime) {
   const turnRate = 3.8;
   ant.direction += angleDifference(ant.direction, targetDirection) * turnRate * deltaTime;
 
-  ant.x += Math.cos(ant.direction) * desiredSpeed * deltaTime;
-  ant.y += Math.sin(ant.direction) * desiredSpeed * deltaTime;
+  const stepDist = desiredSpeed * deltaTime;
+  ant.x += Math.cos(ant.direction) * stepDist;
+  ant.y += Math.sin(ant.direction) * stepDist;
+  ant.distanceTraveled += stepDist;
 
   ant.x = clamp(ant.x, 10, world.width - 10);
   ant.y = clamp(ant.y, 10, world.height - 10);
@@ -576,29 +580,50 @@ function drawCrumb(crumb) {
   context.restore();
 }
 
-function drawAnt(ant) {
+function drawAnt(ant, elapsedTime) {
   context.save();
   context.translate(ant.x, ant.y);
   context.rotate(ant.direction);
+
+  const gaitCycle = ant.distanceTraveled * 0.25 + ant.legPhase;
+
+  const legs = [
+    { attachX: -4, side: -1, tripod: 0, reach: 6, spread: 5.5 },
+    { attachX:  1, side: -1, tripod: 1, reach: 7, spread: 6.0 },
+    { attachX:  5, side: -1, tripod: 0, reach: 5, spread: 5.0 },
+    { attachX: -4, side:  1, tripod: 1, reach: 6, spread: 5.5 },
+    { attachX:  1, side:  1, tripod: 0, reach: 7, spread: 6.0 },
+    { attachX:  5, side:  1, tripod: 1, reach: 5, spread: 5.0 },
+  ];
 
   context.strokeStyle = ant.legColor;
   context.lineWidth = 1.2;
   context.lineCap = "round";
 
-  for (const side of [-1, 1]) {
-    for (const legX of [-5, 0, 5]) {
-      context.beginPath();
-      context.moveTo(legX, 0);
-      context.lineTo(legX + 5, side * 5);
-      context.stroke();
-    }
+  for (const leg of legs) {
+    const phase = gaitCycle + leg.tripod * Math.PI;
+    const swing = Math.sin(phase);
+    const lift = Math.max(0, Math.sin(phase)) * 0.4;
+
+    const footX = leg.attachX + swing * 2.5 + leg.reach * 0.3;
+    const footY = leg.side * (leg.spread + lift * 2);
+
+    const kneeX = leg.attachX + (footX - leg.attachX) * 0.45 + leg.side * 0.3;
+    const kneeY = leg.side * (leg.spread * 0.55 + 2.0 + lift * 1.5);
+
+    context.beginPath();
+    context.moveTo(leg.attachX, 0);
+    context.lineTo(kneeX, kneeY);
+    context.lineTo(footX, footY);
+    context.stroke();
   }
 
+  const antennaeSwing = Math.sin(elapsedTime * 3 + ant.legPhase) * 0.5;
   context.beginPath();
   context.moveTo(7, -1);
-  context.lineTo(11, -4);
+  context.lineTo(11, -4 + antennaeSwing);
   context.moveTo(7, 1);
-  context.lineTo(11, 4);
+  context.lineTo(11, 4 - antennaeSwing);
   context.stroke();
 
   context.fillStyle = ant.color;
@@ -669,14 +694,14 @@ function drawHint() {
   context.restore();
 }
 
-function draw() {
+function draw(elapsedTime) {
   context.drawImage(groundTextureCanvas, 0, 0, world.width, world.height);
   context.drawImage(trailCanvas, 0, 0, world.width, world.height);
 
   drawRipples();
   drawHole();
   crumbs.forEach(drawCrumb);
-  ants.forEach(drawAnt);
+  ants.forEach((ant) => drawAnt(ant, elapsedTime));
   drawParticles();
   drawHUD();
   drawHint();
@@ -709,7 +734,7 @@ function step(timestamp) {
     }
   }
 
-  draw();
+  draw(elapsedTime);
   requestAnimationFrame(step);
 }
 
